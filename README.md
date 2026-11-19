@@ -163,14 +163,45 @@ kill $PID
 ```
 
 ```
-[[PEGAR: salida de mymaps (PID y direcciones) y de cat /proc/$PID/maps]]
+PID: 15694
+text addr   (main): 0x5b5a8f4e9209
+rodata addr (msg) : 0x5b5a8f4ea008
+global addr       : 0x5b5a8f4ec010
+heap addr         : 0x70119524c010
+stack var addr    : 0x7ffdab359870
+Presione Enter para continuar...
+5b5a8f4e8000-5b5a8f4e9000 r--p 00000000 00:43 121315714962499549  .../parte2/mymaps
+5b5a8f4e9000-5b5a8f4ea000 r-xp 00001000 00:43 121315714962499549  .../parte2/mymaps
+5b5a8f4ea000-5b5a8f4eb000 r--p 00002000 00:43 121315714962499549  .../parte2/mymaps
+5b5a8f4eb000-5b5a8f4ec000 r--p 00002000 00:43 121315714962499549  .../parte2/mymaps
+5b5a8f4ec000-5b5a8f4ed000 rw-p 00003000 00:43 121315714962499549  .../parte2/mymaps
+5b5a9a22c000-5b5a9a24d000 rw-p 00000000 00:00 0                   [heap]
+701195000000-701195028000 r--p 00000000 08:30 13644               /usr/lib/x86_64-linux-gnu/libc.so.6
+701195028000-7011951c0000 r-xp 00028000 08:30 13644               /usr/lib/x86_64-linux-gnu/libc.so.6
+7011951c0000-70119520e000 r--p 001c0000 08:30 13644               /usr/lib/x86_64-linux-gnu/libc.so.6
+70119520e000-701195212000 r--p 0020e000 08:30 13644               /usr/lib/x86_64-linux-gnu/libc.so.6
+701195212000-701195214000 rw-p 00212000 08:30 13644               /usr/lib/x86_64-linux-gnu/libc.so.6
+701195214000-701195221000 rw-p 00000000 00:00 0
+70119524c000-701195350000 rw-p 00000000 00:00 0
+701195355000-701195357000 rw-p 00000000 00:00 0
+701195357000-701195358000 r--p 00000000 08:30 13641               /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+701195358000-701195387000 r-xp 00001000 08:30 13641               /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+701195387000-701195392000 r--p 00030000 08:30 13641               /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+701195392000-701195394000 r--p 0003b000 08:30 13641               /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+701195394000-701195395000 rw-p 0003d000 08:30 13641               /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+701195395000-701195396000 rw-p 00000000 00:00 0
+7ffdab33a000-7ffdab35b000 rw-p 00000000 00:00 0                   [stack]
+7ffdab3ac000-7ffdab3b0000 r--p 00000000 00:00 0                   [vvar]
+7ffdab3b0000-7ffdab3b2000 r-xp 00000000 00:00 0                   [vdso]
 ```
+
+En esta salida la ruta completa del ejecutable (`/mnt/c/Users/.../parte2/mymaps`) se abrevió como `.../parte2/mymaps`.
 
 | Región | Entrada típica en `maps` | Permisos | Propósito |
 |---|---|---|---|
 | Texto (`.text`) | `/…/mymaps` | `r-xp` | Código ejecutable del programa |
 | Solo lectura (`.rodata`) | `/…/mymaps` | `r--p` | Constantes y cadenas literales (como `"hola"`) |
-| Datos (`.data`/`.bss`) | `/…/mymaps` y anónima contigua | `rw-p` | Variables globales inicializadas y sin inicializar |
+| Datos (`.data`/`.bss`) | `/…/mymaps` | `rw-p` | Variables globales inicializadas y sin inicializar (en esta ejecución no aparece región anónima contigua) |
 | Heap | `[heap]` | `rw-p` | Memoria dinámica (`malloc` pequeño; un bloque de 1 MB puede ir en una región `mmap` anónima) |
 | libc | `/…/libc.so.6` | `r--p`, `r-xp`, `rw-p` | Biblioteca compartida: código, constantes y datos propios de cada proceso |
 | Cargador | `/…/ld-linux-x86-64.so.2` | `r-xp` y otras | Enlazador dinámico que carga las bibliotecas |
@@ -179,24 +210,61 @@ kill $PID
 
 La `p` final indica mapeo privado (copy-on-write). Las direcciones varían entre ejecuciones por ASLR.
 
+**Anotación de la salida.** Las direcciones impresas por el programa caen en estas regiones: `main` (0x5b5a8f4e9209) en el segmento `r-xp` del ejecutable (5b5a8f4e9000-5b5a8f4ea000); `msg` (0x5b5a8f4ea008) en el segmento `r--p` siguiente (5b5a8f4ea000-5b5a8f4eb000), que contiene `.rodata`; `global_data` (0x5b5a8f4ec010) en el segmento `rw-p` (5b5a8f4ec000-5b5a8f4ed000); la variable local (0x7ffdab359870) en `[stack]` (7ffdab33a000-7ffdab35b000). El bloque de 1 MB de `malloc` (0x70119524c010) no quedó en `[heap]` (5b5a9a22c000-5b5a9a24d000) sino en una región anónima `rw-p` (70119524c000-701195350000), porque glibc usa `mmap` para bloques grandes. libc.so.6 y ld-linux-x86-64.so.2 aparecen con cinco segmentos cada una, y `[vvar]` y `[vdso]` cierran el mapa.
+
 ![Checkpoint 1 - captura 1](capturas/p2-cp1-1.png)
 ![Checkpoint 1 - captura 2](capturas/p2-cp1-2.png)
 
 ## 2.2 Clasificación de páginas con smaps y pmap (Checkpoint 2)
 
+El estudiante inspecciona el shell en ejecución (`bash`, PID 309) con `smaps` y `pmap -x`. Como `smaps` completo es muy largo, un `awk` imprime una línea por región con sus campos Rss, Shared_Clean, Private_Clean y Private_Dirty, filtrada a libc, heap y stack. El mismo `awk` se aplica a un proceso recién creado (`sleep 30`, leyendo `/proc/$P/smaps`) para comparar.
+
 ```bash
 cat /proc/$$/smaps | head -60
 pmap -x $$
-awk '/^[0-9a-f]+-[0-9a-f]+ /{name=$6" "$1} /^(Rss|Shared_Clean|Private_Dirty):/{print name, $1, $2, $3}' /proc/$$/smaps | grep -E "libc|heap|stack"
+awk '/^[0-9a-f]+-[0-9a-f]+ /{n=$6; p=$2} /^Rss:/{rss=$2} /^Shared_Clean:/{sc=$2} /^Private_Clean:/{pc=$2} /^Private_Dirty:/{pd=$2; if (n ~ /libc|heap|stack/) print n, p, "Rss="rss, "Shared_Clean="sc, "Private_Clean="pc, "Private_Dirty="pd}' /proc/$$/smaps
 vmstat -s | head -15
 free -h
 ```
 
 ```
-[[PEGAR: salida del awk (Rss, Shared_Clean y Private_Dirty de libc, heap y stack) y de pmap -x $$]]
+=== Shell actual (PID 309) ===
+[heap] rw-p Rss=1376 Shared_Clean=0 Private_Clean=0 Private_Dirty=1376
+/usr/lib/x86_64-linux-gnu/libc.so.6 r--p Rss=156 Shared_Clean=156 Private_Clean=0 Private_Dirty=0
+/usr/lib/x86_64-linux-gnu/libc.so.6 r-xp Rss=1420 Shared_Clean=1420 Private_Clean=0 Private_Dirty=0
+/usr/lib/x86_64-linux-gnu/libc.so.6 r--p Rss=248 Shared_Clean=248 Private_Clean=0 Private_Dirty=0
+/usr/lib/x86_64-linux-gnu/libc.so.6 r--p Rss=16 Shared_Clean=0 Private_Clean=0 Private_Dirty=16
+/usr/lib/x86_64-linux-gnu/libc.so.6 rw-p Rss=8 Shared_Clean=0 Private_Clean=0 Private_Dirty=8
+[stack] rw-p Rss=108 Shared_Clean=0 Private_Clean=0 Private_Dirty=108
+=== Proceso nuevo (sleep) ===
+[heap] rw-p Rss=116 Shared_Clean=0 Private_Clean=0 Private_Dirty=116
+/usr/lib/x86_64-linux-gnu/libc.so.6 r--p Rss=160 Shared_Clean=160 Private_Clean=0 Private_Dirty=0
+/usr/lib/x86_64-linux-gnu/libc.so.6 r-xp Rss=1312 Shared_Clean=1312 Private_Clean=0 Private_Dirty=0
+/usr/lib/x86_64-linux-gnu/libc.so.6 r--p Rss=184 Shared_Clean=184 Private_Clean=0 Private_Dirty=0
+/usr/lib/x86_64-linux-gnu/libc.so.6 r--p Rss=16 Shared_Clean=0 Private_Clean=0 Private_Dirty=16
+/usr/lib/x86_64-linux-gnu/libc.so.6 rw-p Rss=8 Shared_Clean=0 Private_Clean=0 Private_Dirty=8
+[stack] rw-p Rss=16 Shared_Clean=0 Private_Clean=0 Private_Dirty=16
 ```
 
-Región Private_Dirty documentada: `[[heap o stack]]` con `[[XX]] kB`. Región Shared_Clean documentada: `libc.so.6` (segmento `r-xp`) con `[[XX]] kB`.
+Extracto de `pmap -x $$` (la salida completa está en la captura 2):
+
+```
+309:   -bash
+Address           Kbytes     RSS   Dirty Mode  Mapping
+00005f5e98ddf000    1452    1376    1376 rw---   [ anon ]
+00007b751c800000     160     156       0 r----  libc.so.6 (deleted)
+00007b751c828000    1632    1420       0 r-x--  libc.so.6 (deleted)
+00007b751c9c0000     312     248       0 r----  libc.so.6 (deleted)
+00007b751ca0e000      16      16      16 r----  libc.so.6 (deleted)
+00007b751ca12000       8       8       8 rw---  libc.so.6 (deleted)
+00007ffd7d1c6000     132     108     108 rw---    [ stack ]
+---------------- ------- ------- -------
+total kB            6776    6000    2196
+```
+
+Regiones documentadas (shell, PID 309): **Private_Dirty** en `[heap]` con **1376 kB** y en `[stack]` con **108 kB**. **Shared_Clean** en `libc.so.6` (segmento `r-xp`) con **1420 kB**; en el proceso nuevo, el mismo segmento marca 1312 kB.
+
+**Observaciones.** Los valores de `pmap -x` coinciden con los de `smaps` (heap 1376 kB, stack 108 kB, libc `r-xp` 1420 kB de RSS), pero `pmap` solo ofrece la columna Dirty: en el cuarto segmento de libc marca 16 kB y no indica si son privadas o compartidas; `smaps` sí lo dice (`Private_Dirty=16`). No toda libc es `Shared_Clean`: sus dos últimos segmentos (16 kB `r--p` y 8 kB `rw-p`) son `Private_Dirty`, porque contienen datos que el cargador dinámico modifica en cada proceso (reubicaciones) y por eso cada proceso tiene su propia copia. El RSS del segmento `r-xp` difiere entre procesos (1420 kB en el shell, 1312 kB en `sleep`) porque cada proceso solo tiene en su tabla de páginas las que ha usado, aunque las páginas físicas del código son compartidas. `pmap` marca libc como `(deleted)` en el shell; una explicación plausible, no verificada, es que el shell se abrió antes de que el archivo de la biblioteca fuera reemplazado en disco por una actualización del sistema.
 
 **Explicación.** El heap y el stack son memoria que el proceso escribe y que solo él posee: las páginas se modificaron (*dirty*), no tienen copia idéntica en disco y no se comparten con otros procesos (*private*), por eso son `Private_Dirty`. El código de `libc` proviene de un archivo, no se modifica y es idéntico para todos los procesos que lo usan, así que las mismas páginas físicas se comparten entre ellos (*shared*) y, al no haberse modificado, pueden descartarse y recargarse desde el archivo (*clean*): son `Shared_Clean`.
 
@@ -211,15 +279,29 @@ Región Private_Dirty documentada: `[[heap o stack]]` con `[[XX]] kB`. Región S
 gcc -O0 -Wall -o pagefault_demo pagefault_demo.c
 ./pagefault_demo
 /usr/bin/time -v ./pagefault_demo 2>&1 | grep -E "Major|Minor|Maximum resident"
+cat /sys/kernel/mm/transparent_hugepage/enabled
 ```
 
 ```
-[[PEGAR: salida de ./pagefault_demo y de /usr/bin/time -v (Major y Minor page faults)]]
+--- ANTES del memset (reservado, no residente) ---
+VmPeak:   105164 kB
+VmSize:   105164 kB
+VmRSS:      1688 kB
+minor faults acumulados: 86 | major faults acumulados: 2
+--- DESPUES del memset (RSS crece ~100 MB) ---
+VmPeak:   105164 kB
+VmSize:   105164 kB
+VmRSS:    104152 kB
+minor faults acumulados: 25687 | major faults acumulados: 2
+        Maximum resident set size (kbytes): 103936
+        Major (requiring I/O) page faults: 2
+        Minor (reclaiming a frame) page faults: 25677
+always [madvise] never
 ```
 
-VmRSS antes del `memset`: `[[XX]] kB`; después: `[[XX]] kB` (diferencia ≈ 100 MB). Minor faults reportados por `time -v`: `[[XX]]`; major faults: `[[XX]]`.
+VmRSS antes del `memset`: 1688 kB; después: 104152 kB (diferencia: 102 464 kB, ≈ 100 MB). Minor faults reportados por `time -v`: 25677; major faults: 2. Dentro del programa, `getrusage` marcó 86 minor faults antes del `memset` y 25687 después (diferencia: 25 601, frente a los 25 600 esperados). Las dos mediciones salen de ejecuciones distintas. El modo de páginas grandes transparentes es `madvise`, por lo que este `malloc` no recibe páginas de 2 MB y cada página de 4 KB cuenta como un fault.
 
-**Explicación.** `malloc` de un bloque grande solo reserva direcciones virtuales (aparece en `VmSize`/`VmPeak`) y no asigna RAM física: el kernel usa asignación diferida (*demand paging*). Por eso `malloc` no provoca page faults inmediatos y `VmRSS` es pequeño antes del `memset`. Al escribir en cada página de 4 KB por primera vez ocurre un minor fault (la página no estaba en la tabla de páginas pero no requiere leer disco): 100 MB / 4 KB = 25 600 faults, que coincide con el aumento del contador. Un major fault, en cambio, exige leer del disco (por ejemplo, de swap o de un archivo mapeado); aquí no se esperan.
+**Explicación.** `malloc` de un bloque grande solo reserva direcciones virtuales (aparece en `VmSize`/`VmPeak`) y no asigna RAM física: el kernel usa asignación diferida (*demand paging*). Por eso `malloc` no provoca page faults inmediatos y `VmRSS` es pequeño antes del `memset` (1688 kB). Al escribir en cada página de 4 KB por primera vez ocurre un minor fault (la página no estaba en la tabla de páginas pero no requiere leer disco): 100 MB / 4 KB = 25 600 faults, que coincide con el aumento del contador (de 86 a 25687, es decir 25 601). Un major fault, en cambio, exige leer del disco (por ejemplo, de swap o de un archivo mapeado). Se registraron 2, pero ya estaban en el contador antes del `memset` (2 antes y 2 después), de modo que no los causó la escritura de los 100 MB; se atribuyen a la carga inicial del programa, una explicación plausible que no se midió por separado.
 
 ![Checkpoint 3 - captura 1](capturas/p2-cp3-1.png)
 ![Checkpoint 3 - captura 2](capturas/p2-cp3-2.png)
@@ -234,12 +316,20 @@ for i in 1 2 3; do ./mmap_fault_cost; done
 ```
 
 ```
-[[PEGAR: salida de las tres ejecuciones]]
+Costo promedio primer toque (con fault): 2020.8 ns
+Costo promedio segundo toque (sin fault): 19.6 ns
+Overhead atribuible al page fault: 2001.2 ns
+Costo promedio primer toque (con fault): 1839.2 ns
+Costo promedio segundo toque (sin fault): 19.6 ns
+Overhead atribuible al page fault: 1819.5 ns
+Costo promedio primer toque (con fault): 1771.5 ns
+Costo promedio segundo toque (sin fault): 19.9 ns
+Overhead atribuible al page fault: 1751.6 ns
 ```
 
-Overhead atribuible al page fault: **`[[XX]]` ns** (promedio de las ejecuciones).
+Overhead atribuible al page fault: **≈ 1857 ns** (promedio de 2001.2, 1819.5 y 1751.6 ns; rango de 1751.6 a 2001.2 ns).
 
-**Interpretación.** El primer toque incluye la trampa al kernel, la asignación y puesta a cero de un marco físico y la actualización de la tabla de páginas; el segundo solo paga el acceso normal más el costo de las dos llamadas a `clock_gettime`, que también está incluido en el primer toque y por eso se cancela al restar. El primer toque resulta consistentemente mayor que el segundo. Comparado con la latencia de un acceso a RAM medida en la Parte 1 (`[[XX]]` ns por acceso aleatorio con 64 MB), el costo de un minor fault es `[[de uno a dos órdenes de magnitud / ver resultado]]` mayor, ya que un fault ejecuta código del kernel además del acceso a memoria.
+**Interpretación.** El primer toque incluye la trampa al kernel, la asignación y puesta a cero de un marco físico y la actualización de la tabla de páginas; el segundo solo paga el acceso normal más el costo de las dos llamadas a `clock_gettime`, que también está incluido en el primer toque y por eso se cancela al restar. El primer toque resulta consistentemente mayor que el segundo (entre 1771.5 y 2020.8 ns frente a 19.6 y 19.9 ns en las tres ejecuciones). Comparado con la latencia de un acceso a RAM medida en la Parte 1 (17.309 ns por acceso aleatorio con 64 MB), el costo de un minor fault (≈ 1857 ns) es unas 107 veces mayor, dos órdenes de magnitud, ya que un fault ejecuta código del kernel además del acceso a memoria.
 
 ![Checkpoint 4 - captura 1](capturas/p2-cp4-1.png)
 ![Checkpoint 4 - captura 2](capturas/p2-cp4-2.png)
