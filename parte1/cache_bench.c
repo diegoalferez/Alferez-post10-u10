@@ -3,6 +3,7 @@
  *
  * Mide la latencia de acceso a memoria con tres patrones:
  *   1. bench_seq    : acceso secuencial (stride de 1 byte)
+ *      bench_seq_line: acceso secuencial leyendo 1 byte por linea de cache
  *   2. bench_rand   : acceso aleatorio (indices mezclados con Fisher-Yates)
  *   3. bench_stride : acceso con stride fijo (expone conflictos de asociatividad)
  *
@@ -21,7 +22,8 @@
 #define KB (1024UL)
 #define MB (1024UL * 1024UL)
 
-#define STRIDE_LINE   64UL    /* tamano de una linea de cache */
+#define LINE_BYTES    64UL    /* tamano de una linea de cache */
+#define STRIDE_LINE   LINE_BYTES
 #define STRIDE_HALF   2048UL  /* mitad del tamano de pagina (evidencia de la decision 1) */
 #define STRIDE_PAGE   4096UL  /* tamano de pagina = 32 KB / 8 vias */
 
@@ -46,6 +48,32 @@ double bench_seq(size_t n_bytes)
 
     free((void *)arr);
     return elapsed_ns(t0, t1) / (REPEAT * (double)n_bytes);
+}
+
+/* Acceso secuencial leyendo 1 byte por linea de cache (cada 64 bytes).
+ * Con lectura byte a byte el costo del bucle (~0.7 ns/byte) oculta el efecto de la
+ * cache, porque 64 lecturas comparten una misma linea. Leyendo una vez por linea
+ * cada acceso necesita una linea distinta y los saltos entre niveles se ven.
+ * Devuelve ns por linea. Las repeticiones se ajustan para mover ~400 MB en total. */
+double bench_seq_line(size_t n_bytes)
+{
+    volatile char *arr = (volatile char *)malloc(n_bytes);
+    if (!arr) return -1.0;
+    memset((void *)arr, 1, n_bytes);
+
+    size_t lines = n_bytes / LINE_BYTES;
+    long rep = (long)(400UL * MB / n_bytes);
+    if (rep < 10) rep = 10;
+
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    for (long r = 0; r < rep; r++)
+        for (size_t i = 0; i < n_bytes; i += LINE_BYTES)
+            (void)arr[i];
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+
+    free((void *)arr);
+    return elapsed_ns(t0, t1) / (rep * (double)lines);
 }
 
 /* Acceso aleatorio con indices pre-mezclados (Fisher-Yates). Devuelve ns por acceso (int). */
@@ -126,11 +154,13 @@ int main(void)
     srand(42);                                     /* mezcla reproducible */
 
     printf("=== Secuencial vs aleatorio (Checkpoints 2 y 3) ===\n");
-    printf("%-12s %14s %18s\n", "Array (KB)", "seq (ns/byte)", "rand (ns/acceso)");
+    printf("%-11s %14s %17s %17s\n", "Array (KB)", "seq (ns/byte)",
+           "seq (ns/linea)", "rand (ns/acceso)");
     for (int i = 0; i < n; i++) {
-        double seq = bench_seq(sizes[i]);
-        double rnd = bench_rand(sizes[i]);
-        printf("%-12zu %14.3f %18.3f\n", sizes[i] / KB, seq, rnd);
+        double seq  = bench_seq(sizes[i]);
+        double line = bench_seq_line(sizes[i]);
+        double rnd  = bench_rand(sizes[i]);
+        printf("%-11zu %14.3f %17.3f %17.3f\n", sizes[i] / KB, seq, line, rnd);
         fflush(stdout);
     }
 
